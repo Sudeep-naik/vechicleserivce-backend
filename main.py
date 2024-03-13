@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request,render_template,redirect,url_for,session
 from flask_sqlalchemy import SQLAlchemy
 import uuid
 import bcrypt
@@ -7,11 +7,11 @@ from sqlalchemy.orm.exc import NoResultFound
 app = Flask(__name__)
 
 # MySQL Configuration choose your port no and password this is a dummy thing i have set up
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+mysqlconnector://root:user@127.0.0.1:3307/vechiledbms'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://root:@localhost/dbms_project1'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
-
+app.secret_key="secret"
 
 # Example Model
 class Users(db.Model):
@@ -32,7 +32,7 @@ class Vehicle(db.Model):
     make = db.Column(db.String(60))
     model = db.Column(db.String(60))
     make_year = db.Column(db.Integer)
-    vehicle_identification_number = db.Column(db.String(10))
+    vehicle_identification_number = db.Column(db.String(100))
     licence_number = db.Column(db.String(20))
     user = db.relationship('Users', backref='vehicle', lazy=True)
 
@@ -80,9 +80,9 @@ class EmissionDocuments(db.Model):
 
 
 class ComplaintRegistration(db.Model):
-    __tablename__ = 'complaint_registration'
-    vehicle_id = db.Column(db.String(36), db.ForeignKey('vehicle.vehicle_id'), nullable=False, primary_key=True)
-    complaint = db.Column(db.String(500), unique=True)
+    __tablename__ = 'compalint_registeration'
+    vehicle_id = db.Column(db.String(36), db.ForeignKey('vehicle.vehicle_id'), nullable=False)
+    complaint = db.Column(db.String(500), unique=True,primary_key=True)
     complaint_date = db.Column(db.DateTime)
     file_document_path = db.Column(db.String(255))
     upload_date = db.Column(db.Date)
@@ -345,12 +345,68 @@ def get_registration_documents(user_id, vehicle_id):
 
 
 # admin routes
-@app.route('/admin/control', methods=['GET'])
-def fun1():
-    return "Yes admin route touched you can handle the admin logic here"
+@app.route('/admin/control/login', methods=['GET','POST'])
+def admin_login():
+    if request.method=='POST':
+       email=request.form.get("email")
+       password=request.form.get("password")
+       code=request.form.get("code")
+       
+       user=Users.query.filter_by(email=email).first()
+
+       if code=="111" and email=="admin@gmail.com" and password=="admin":
+           session["email"]=email
+           return redirect(url_for("admin_dashboard"))
+       else:
+           return render_template("index.html")
+       
+    return render_template("/index.html")
+
+
+
+@app.route('/admin/control/dashboard',methods=['GET','POST'])
+def admin_dashboard():
+    if session["email"]:
+        complaint=ComplaintRegistration.query.all()
+        a=0
+        for i in complaint:
+            if i.resolved==1:
+                a=a+1
+        print(len(complaint))
+        return render_template("/dashboard.html",complaints=complaint,a=a)
+    return redirect(url_for("admin_login"))
+
+
+
+@app.route("/admin/control/assign/<string:vehicle_id>",methods=['GET'])
+def assign(vehicle_id):
+    comp=ComplaintRegistration.query.filter_by(vehicle_id=vehicle_id).first()
+    comp.resolved=True
+    db.session.add(comp)
+    db.session.commit()
+    return redirect(url_for("admin_dashboard"))
+   
+
+@app.route("/admin/control/delete/<string:vehicle_id>")
+def Delete(vehicle_id):
+    comp=ComplaintRegistration.query.filter_by(vehicle_id=vehicle_id).first()
+    comp.resolved=True
+    db.session.delete(comp)
+    db.session.commit()
+    return redirect(url_for("admin_dashboard"))   
+
+@app.route("/admin/control/unresolved")
+def unresolved():
+    
+    return render_template("inspect.html")
+
+@app.route('/admin/control/logout',methods=['GET','POST'])
+def admin_logout():
+    session.pop("email",None)
+    return redirect(url_for("admin_login"))
 
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True, host='0.0.0.0', port=3300)
+    app.run(debug=True)
